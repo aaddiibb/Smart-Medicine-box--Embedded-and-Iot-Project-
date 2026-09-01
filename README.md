@@ -32,25 +32,6 @@ An IoT-based Smart Medicine Box powered by an **ESP32 microcontroller** and a mo
 
 ---
 
-##  System Architecture
-
-```
-┌─────────────────────┐        HTTP / JSON          ┌──────────────────────┐
-│   Laravel Web App   │  ────────────────────────▶ │   ESP32 WebServer     │
-│  (Tailwind CSS UI)  │  ◀──────────────────────── │   (medicine_box.ino)  │
-└─────────────────────┘   polled every 5 seconds    └──────────┬───────────┘
-                                                               │
-                                                   Digital I/O │
-                                                               ▼
-                                              ┌─────────────────────────────┐
-                                              │  Hardware Layer             │
-                                              │  • 6× LEDs (per compartment)│
-                                              │  • 6× IR sensors            │
-                                              │  • 1× Reed switch (lid)     │
-                                              │  • 1× Active buzzer         │
-                                              └─────────────────────────────┘
-```
-
 **Data flow:** Web App (Laravel) → HTTP/JSON → ESP32 WebServer → Hardware (LEDs, Buzzer, Reed Switch, IR Sensors) → Status → HTTP/JSON → Web App (polled every 5s)
 
 The ESP32 always acts as the **HTTP server**; it never opens outbound connections. This is why missed-dose logs use a **poll-and-piggyback** pattern instead of a push/webhook — the device queues log entries in RAM and the web app collects them on its next `/status` poll, then explicitly acknowledges receipt via `/clear-logs`.
@@ -98,19 +79,7 @@ All hardware pins are defined as named constants at the top of the firmware, so 
 
 ---
 
-##  HTTP API Reference
 
-| Endpoint | Method | Called by | Effect on device |
-|---|---|---|---|
-| `/ping` | GET | Connection test | Returns `{pong:true}` |
-| `/status` | GET | Live Status page (every 5s) | Returns mode, status, timeout, and any pending `log_queue` entries |
-| `/set-mode` | POST | Mode Selection page | Switches operating mode, resets status to "Ready" |
-| `/set-dose-schedules` | POST | Dose Mode save | Overwrites the 6 dose-mode compartment slots |
-| `/set-medicine-schedules` | POST | Medicine Mode "Save All" | Overwrites all named medicine schedules |
-| `/set-timeout` | POST | Settings page | Updates the missed-dose timeout window |
-| `/sync-time` | POST | Device Controls | Sets the ESP32's system clock from the browser's time |
-| `/restart` | POST | Device Controls | Acknowledges, then reboots the ESP32 |
-| `/clear-logs` | POST | After log persistence | Clears the device's in-RAM missed-dose buffer |
 
 ---
 
@@ -132,18 +101,6 @@ All hardware pins are defined as named constants at the top of the firmware, so 
 
 ---
 
-## Features
-
-- Six independently monitored compartments
-- Fixed dose-slot and named-medicine scheduling modes
-- Per-compartment LEDs showing which medicine to take
-- Buzzer alarm until the lid opens
-- Reed-switch lid detection and one IR sensor per compartment
-- Configurable 1–60 minute missed-dose timeout
-- Live status polling every five seconds with browser notifications
-- Connection testing, clock synchronization, and remote restart
-- Graceful Laravel-side behavior when the ESP32 is offline
-- Local SQLite storage for settings and schedules
 
 ## Architecture
 
@@ -434,27 +391,7 @@ erDiagram
 
 The tables are independent and have timestamps but no foreign keys. `device_settings` is treated as a singleton row. Seeders create that row and the six dose slots.
 
-### Synchronization flow
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Laravel
-    participant SQLite
-    participant ESP32
-    User->>Laravel: Save schedule/settings
-    Laravel->>SQLite: Validate and persist
-    SQLite-->>Laravel: Saved
-    Laravel->>ESP32: POST JSON
-    alt Device reachable
-        ESP32-->>Laravel: success=true
-        Laravel-->>User: Saved and synchronized
-    else Device unavailable
-        Laravel-->>User: Saved locally; sync failed
-    end
-```
-
-Schedules, mode, and timeout are held only in ESP32 RAM. Restarting the board resets them to firmware defaults/empty tables. Re-select the mode and send the relevant schedules after every restart.
 
 ## Project structure
 
